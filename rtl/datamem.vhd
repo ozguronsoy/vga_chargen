@@ -1,35 +1,52 @@
+-- VGA Char Generator Project
+-- DONE
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use std.textio.all;             
 use ieee.std_logic_textio.all; 
 
+-- ascii data hardcoded to 7.
+
 entity datamem is
     generic(
-        c_depth     : integer := 14400;         
-        c_width     : integer := 13;            
-        c_init_f    : string  := "wozniak.mem" 
+        G_DATAMEM_INITF : string;
+        G_MAX_MEM_DEPTH : integer
     );
     port(
-        clk_i       : in std_logic;
-        char_ptr_i  : in integer range 0 to c_depth-1; 
-        ascii_dat_o : out std_logic_vector(6 downto 0);
-        font_col_o  : out std_logic_vector(2 downto 0);
-        bkgr_col_o  : out std_logic_vector(2 downto 0)
+        PX_CLK_I    : in std_logic;
+        CHAR_PTR_I  : in  unsigned(13 downto 0);
+        -- OUTS
+        ASCII_DAT_O : out std_logic_vector(6 downto 0);
+        FONT_COL_O  : out std_logic_vector(2 downto 0);
+        BKGR_COL_O  : out std_logic_vector(2 downto 0);
+        -- PIPE
+        VISIBLE_I   : in  std_logic;
+        VGA_VSYNC_I : in  std_logic;
+        VGA_HSYNC_I : in  std_logic;
+        PTR_PX_X_I  : in  unsigned(5 downto 0);
+        PTR_PX_Y_I  : in  unsigned(5 downto 0);
+        VISIBLE_O   : out std_logic;
+        VGA_VSYNC_O : out std_logic;
+        VGA_HSYNC_O : out std_logic;
+        PTR_PX_X_O  : out unsigned(5 downto 0);
+        PTR_PX_Y_O  : out unsigned(5 downto 0)
     );
 end entity;
 
 architecture rtl of datamem is
 
-    type t_ram is array (0 to c_depth-1) of std_logic_vector(c_width-1 downto 0);
+    -- Memory type
+    type t_ram is array (0 to G_MAX_MEM_DEPTH-1) of std_logic_vector(12 downto 0);
 
+    -- :::::::::::::::::::::::::::::: WRITE INIT FILE TO MEMORY ::::::::::::::::::::::::::::::
     impure function InitRamFromFile (FileName : in string) return t_ram is
         file RamFile : text open read_mode is FileName;
         variable RamFileLine : line;
         variable RAM : t_ram;
-        variable temp_vec : std_logic_vector(c_width-1 downto 0);
-    begin
-        for i in 0 to c_depth-1 loop
+        variable temp_vec : std_logic_vector(12 downto 0);
+    begin 
+        for i in 0 to G_MAX_MEM_DEPTH-1 loop
             if not endfile(RamFile) then
                 readline(RamFile, RamFileLine);
                 read(RamFileLine, temp_vec);
@@ -40,21 +57,39 @@ architecture rtl of datamem is
         end loop;
         return RAM;
     end function;
-
-    signal s_ram : t_ram := InitRamFromFile(c_init_f);
+    signal s_ram : t_ram := InitRamFromFile(G_DATAMEM_INITF);
+    -- :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
     
-    signal s_data_out : std_logic_vector(c_width-1 downto 0);
+    -- Signals
+    signal s_data_out : std_logic_vector(12 downto 0);
 
 begin
-
-    process (clk_i) is begin
-        if rising_edge(clk_i) then
-                s_data_out <= s_ram(char_ptr_i);
+    
+    -- Main Logic
+    process (PX_CLK_I) is begin
+        if rising_edge(PX_CLK_I) then
+                -- FF2
+                s_data_out <= s_ram(to_integer(char_ptr_i));
         end if;
     end process;
 
-    bkgr_col_o  <= s_data_out(12 downto 10);
-    font_col_o  <= s_data_out(9 downto 7);
-    ascii_dat_o <= s_data_out(6 downto 0);
+    -- Outputs (comb.)
+    -- Data Frame : [Background Color] [Font Color] [ASCII Data]
+    BKGR_COL_O  <= s_data_out(12 downto 10);
+    FONT_COL_O  <= s_data_out(9 downto 7);
+    ASCII_DAT_O <= s_data_out(6 downto 0);
+
+
+    -- PIPE LATENCY.
+    process (PX_CLK_I) is begin
+        if rising_edge(PX_CLK_I) then
+            -- FF1
+            VISIBLE_O   <= VISIBLE_I  ;
+            VGA_VSYNC_O <= VGA_VSYNC_I;
+            VGA_HSYNC_O <= VGA_HSYNC_I;
+            PTR_PX_X_O  <= PTR_PX_X_I ;
+            PTR_PX_Y_O  <= PTR_PX_Y_I ;
+        end if;
+    end process;
 
 end architecture;
