@@ -1,12 +1,9 @@
--- VGA Char Generator Project
--- DONE
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use ieee.math_real.all;
 use std.textio.all;             
-use ieee.std_logic_textio.all; 
-
--- ascii data hardcoded to 7.
+use ieee.std_logic_textio.all;
 
 entity datamem is
     generic(
@@ -14,16 +11,22 @@ entity datamem is
         G_MAX_MEM_DEPTH : integer
     );
     port(
-        PX_CLK_I    : in std_logic;
-        CHAR_PTR_I  : in  unsigned(13 downto 0);
+        -- PORT A: Write @SYSCLK - CDC
+        WR_CLK_I    : in std_logic; 
         WREN_I      : in std_logic;
         WRDAT_I     : in std_logic_vector(15 downto 0);
         WRADR_I     : in unsigned(integer(ceil(log2(real(G_MAX_MEM_DEPTH))))-1 downto 0);
-        -- OUTS
+        
+        -- PORT B: Read @PXCLK - CDC
+        PX_CLK_I    : in std_logic;
+        CHAR_PTR_I  : in unsigned(13 downto 0);
+        
+        -- Outputs
         ASCII_DAT_O : out std_logic_vector(6 downto 0);
         FONT_COL_O  : out std_logic_vector(2 downto 0);
         BKGR_COL_O  : out std_logic_vector(2 downto 0);
-        -- PIPE
+        
+        -- Pipeline Signals
         VISIBLE_I   : in  std_logic;
         VGA_VSYNC_I : in  std_logic;
         VGA_HSYNC_I : in  std_logic;
@@ -39,60 +42,70 @@ end entity;
 
 architecture rtl of datamem is
 
-    -- Memory type
     type t_ram is array (0 to G_MAX_MEM_DEPTH-1) of std_logic_vector(12 downto 0);
-
-    -- :::::::::::::::::::::::::::::: WRITE INIT FILE TO MEMORY ::::::::::::::::::::::::::::::
+    
+    -- Fill memory with initial file.
     impure function InitRamFromFile (FileName : in string) return t_ram is
-        file RamFile : text open read_mode is FileName;
+        file RamFile : text;
         variable RamFileLine : line;
         variable RAM : t_ram;
         variable temp_vec : std_logic_vector(12 downto 0);
+        variable status : file_open_status;
     begin 
         for i in 0 to G_MAX_MEM_DEPTH-1 loop
-            if not endfile(RamFile) then
-                readline(RamFile, RamFileLine);
-                read(RamFileLine, temp_vec);
-                RAM(i) := temp_vec;
-            else
-                RAM(i) := (others => '0'); -- If the file ends, fill with 0.
-            end if;
+            RAM(i) := (others => '0');
         end loop;
+        
+        file_open(status, RamFile, FileName, read_mode);
+        if status = open_ok then
+            for i in 0 to G_MAX_MEM_DEPTH-1 loop
+                if not endfile(RamFile) then
+                    readline(RamFile, RamFileLine);
+                    read(RamFileLine, temp_vec);
+                    RAM(i) := temp_vec;
+                end if;
+            end loop;
+            file_close(RamFile);
+        end if;
         return RAM;
     end function;
+
     signal s_ram : t_ram := InitRamFromFile(G_DATAMEM_INITF);
-    -- :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-    
-    -- Signals
     signal s_data_out : std_logic_vector(12 downto 0);
 
 begin
-    
-    -- Main Logic
-    process (PX_CLK_I) is begin
-        if rising_edge(PX_CLK_I) then
-            -- FF2
-            s_data_out <= s_ram(to_integer(char_ptr_i));
+
+    -- PORT A: Write @SYSCLK - CDC
+    P_PORTA_WRITE : process(WR_CLK_I) begin
+        if rising_edge(WR_CLK_I) then
+            if WREN_I = '1' then
+                -- 16 bit geleni 13 bit saklıyoruz
+                s_ram(to_integer(WRADR_I)) <= WRDAT_I(12 downto 0);
+            end if;
         end if;
     end process;
 
-    -- Outputs (comb.)
-    -- Data Frame : [Background Color] [Font Color] [ASCII Data]
+    -- PORT B: Read @PXCLK - CDC
+    P_PORTB_READ : process (PX_CLK_I) begin
+        if rising_edge(PX_CLK_I) then
+            s_data_out <= s_ram(to_integer(CHAR_PTR_I));
+        end if;
+    end process;
+
+    -- Match Pipeline Signals
+    P_PIPE_DELAY : process (PX_CLK_I) begin
+        if rising_edge(PX_CLK_I) then
+            VISIBLE_O   <= VISIBLE_I;
+            VGA_VSYNC_O <= VGA_VSYNC_I;
+            VGA_HSYNC_O <= VGA_HSYNC_I;
+            PTR_PX_X_O  <= PTR_PX_X_I;
+            PTR_PX_Y_O  <= PTR_PX_Y_I;
+        end if;
+    end process;
+
+    -- Combinational Drive
     BKGR_COL_O  <= s_data_out(12 downto 10);
     FONT_COL_O  <= s_data_out(9 downto 7);
     ASCII_DAT_O <= s_data_out(6 downto 0);
-
-
-    -- PIPE LATENCY.
-    process (PX_CLK_I) is begin
-        if rising_edge(PX_CLK_I) then
-            -- FF1
-            VISIBLE_O   <= VISIBLE_I  ;
-            VGA_VSYNC_O <= VGA_VSYNC_I;
-            VGA_HSYNC_O <= VGA_HSYNC_I;
-            PTR_PX_X_O  <= PTR_PX_X_I ;
-            PTR_PX_Y_O  <= PTR_PX_Y_I ;
-        end if;
-    end process;
 
 end architecture;

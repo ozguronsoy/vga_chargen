@@ -13,10 +13,11 @@ entity vgachargen is
         G_FONT64x64_FILE     : string
     );
     port (
+        SYSCLK_I    : in std_logic;
         PX_CLK_I    : in std_logic;
         RST_I       : in std_logic;
         FONT_SEL_I  : in std_logic_vector(1 downto 0); --00 1x16, 01 32x32, 10 64x64
-        RES_SEL_I   : in std_logic_vector(2 downto 0);
+        RES_SEL_I   : in std_logic_vector(1 downto 0);
         DMEM_WREN_I : in std_logic;
         DMEM_DAT_I  : in std_logic_vector(15 downto 0);
         DMEM_ADR_I  : in unsigned(integer(ceil(log2(real(G_MAX_MEM_DEPTH))))-1 downto 0);
@@ -87,7 +88,7 @@ begin
         G_MAX_MEM_DEPTH => G_MAX_MEM_DEPTH
     )
     port map(
-        -- In
+        WR_CLK_I    => SYSCLK_I,
         PX_CLK_I    => PX_CLK_I,
         CHAR_PTR_I  => sp12_char_ptr,
         WREN_I      => DMEM_WREN_I,
@@ -160,6 +161,7 @@ begin
             VGA_VSYNC_O => s_vga_vsync
         );
 
+    -- Combinational Output Drive.
     VGA_R_O     <= (others => s_vga_r);
     VGA_G_O     <= (others => s_vga_g);
     VGA_B_O     <= (others => s_vga_b);
