@@ -4,8 +4,8 @@ import sys
 import os
 
 # Settings
-TARGET_SIZE = (16, 16)
-FONT_SIZE   = 15
+TARGET_SIZE = (64, 64)
+FONT_SIZE   = 56
 
 def ttf2mem(input_font, output_file, is_verbose):
     char_width, char_height = TARGET_SIZE
