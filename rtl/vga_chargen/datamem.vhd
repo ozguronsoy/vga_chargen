@@ -16,6 +16,9 @@ entity datamem is
     port(
         PX_CLK_I    : in std_logic;
         CHAR_PTR_I  : in  unsigned(13 downto 0);
+        WREN_I      : in std_logic;
+        WRDAT_I     : in std_logic_vector(15 downto 0);
+        WRADR_I     : in unsigned(integer(ceil(log2(real(G_MAX_MEM_DEPTH))))-1 downto 0);
         -- OUTS
         ASCII_DAT_O : out std_logic_vector(6 downto 0);
         FONT_COL_O  : out std_logic_vector(2 downto 0);
@@ -68,8 +71,8 @@ begin
     -- Main Logic
     process (PX_CLK_I) is begin
         if rising_edge(PX_CLK_I) then
-                -- FF2
-                s_data_out <= s_ram(to_integer(char_ptr_i));
+            -- FF2
+            s_data_out <= s_ram(to_integer(char_ptr_i));
         end if;
     end process;
 

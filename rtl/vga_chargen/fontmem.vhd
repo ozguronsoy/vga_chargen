@@ -1,8 +1,8 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use std.textio.all;             
-use ieee.std_logic_textio.all; 
+use std.textio.all;
+use ieee.std_logic_textio.all;
 
 entity fontmem is
     generic(
@@ -36,13 +36,19 @@ end entity;
 
 architecture rtl of fontmem is
 
-    type t_generic_mem is array (natural range <>) of std_logic_vector;
+    -- DÜZELTME 1: Her veri genişliği için özel tip tanımları (VHDL-93 uyumlu)
+    type t_mem_16 is array (natural range <>) of std_logic_vector(15 downto 0);
+    type t_mem_32 is array (natural range <>) of std_logic_vector(31 downto 0);
+    type t_mem_64 is array (natural range <>) of std_logic_vector(63 downto 0);
 
-    impure function InitFontFromFile (FileName : in string; Depth : integer; Width : integer) return t_generic_mem is
+    -- DÜZELTME 2: Her tip için ayrı 'impure function' tanımları
+    
+    -- 16x16 Font Yükleyici
+    impure function InitFont16 (FileName : in string; Depth : integer) return t_mem_16 is
         file RamFile : text open read_mode is FileName;
         variable RamFileLine : line;
-        variable RAM : t_generic_mem(0 to Depth - 1)(Width - 1 downto 0);
-        variable temp_vec : std_logic_vector(Width - 1 downto 0);
+        variable RAM : t_mem_16(0 to Depth - 1);
+        variable temp_vec : std_logic_vector(15 downto 0);
     begin
         for i in 0 to Depth - 1 loop
             if not endfile(RamFile) then
@@ -50,15 +56,54 @@ architecture rtl of fontmem is
                 read(RamFileLine, temp_vec);
                 RAM(i) := temp_vec;
             else
-                RAM(i) := (others => '0'); 
+                RAM(i) := (others => '0');
             end if;
         end loop;
         return RAM;
     end function;
 
-    signal s_font_mem16x16    : t_generic_mem(0 to 128*16-1)(15 downto 0) := InitFontFromFile(G_FONT16x16_FILE, 128*16, 16);
-    signal s_font_mem32x32    : t_generic_mem(0 to 128*32-1)(31 downto 0) := InitFontFromFile(G_FONT32x32_FILE, 128*32, 32);
-    signal s_font_mem64x64    : t_generic_mem(0 to 128*64-1)(63 downto 0) := InitFontFromFile(G_FONT64x64_FILE, 128*64, 64);
+    -- 32x32 Font Yükleyici
+    impure function InitFont32 (FileName : in string; Depth : integer) return t_mem_32 is
+        file RamFile : text open read_mode is FileName;
+        variable RamFileLine : line;
+        variable RAM : t_mem_32(0 to Depth - 1);
+        variable temp_vec : std_logic_vector(31 downto 0);
+    begin
+        for i in 0 to Depth - 1 loop
+            if not endfile(RamFile) then
+                readline(RamFile, RamFileLine);
+                read(RamFileLine, temp_vec);
+                RAM(i) := temp_vec;
+            else
+                RAM(i) := (others => '0');
+            end if;
+        end loop;
+        return RAM;
+    end function;
+
+    -- 64x64 Font Yükleyici
+    impure function InitFont64 (FileName : in string; Depth : integer) return t_mem_64 is
+        file RamFile : text open read_mode is FileName;
+        variable RamFileLine : line;
+        variable RAM : t_mem_64(0 to Depth - 1);
+        variable temp_vec : std_logic_vector(63 downto 0);
+    begin
+        for i in 0 to Depth - 1 loop
+            if not endfile(RamFile) then
+                readline(RamFile, RamFileLine);
+                read(RamFileLine, temp_vec);
+                RAM(i) := temp_vec;
+            else
+                RAM(i) := (others => '0');
+            end if;
+        end loop;
+        return RAM;
+    end function;
+
+    -- DÜZELTME 3: Sinyal tanımlarında yeni tiplerin ve fonksiyonların kullanımı
+    signal s_font_mem16x16    : t_mem_16(0 to 128*16-1) := InitFont16(G_FONT16x16_FILE, 128*16);
+    signal s_font_mem32x32    : t_mem_32(0 to 128*32-1) := InitFont32(G_FONT32x32_FILE, 128*32);
+    signal s_font_mem64x64    : t_mem_64(0 to 128*64-1) := InitFont64(G_FONT64x64_FILE, 128*64);
 
     signal s_fontmem16x16_ptr : integer range 0 to 128*16-1 := 0;
     signal s_fontmem32x32_ptr : integer range 0 to 128*32-1 := 0;
@@ -68,6 +113,7 @@ architecture rtl of fontmem is
     signal s_read_data32x32   : std_logic_vector(31 downto 0) := (others => '0');
     signal s_read_data64x64   : std_logic_vector(63 downto 0) := (others => '0');
 
+    -- Pipeline sinyalleri (Aynı kaldı)
     signal s_pl_visible1      : std_logic;
     signal s_pl_vga_hsync1    : std_logic;
     signal s_pl_vga_vsync1    : std_logic;
@@ -85,29 +131,29 @@ begin
     P_SEQ_PROC : process (PX_CLK_I) is 
     begin
         if rising_edge(PX_CLK_I) then
-            -- FF1
+            -- FF1: Adres Hesaplama
             s_fontmem16x16_ptr <= to_integer(unsigned(ASCII_DAT_I) * 16) + to_integer(PTR_PX_Y_I(3 downto 0));
             s_fontmem32x32_ptr <= to_integer(unsigned(ASCII_DAT_I) * 32) + to_integer(PTR_PX_Y_I(4 downto 0));
             s_fontmem64x64_ptr <= to_integer(unsigned(ASCII_DAT_I) * 64) + to_integer(PTR_PX_Y_I(5 downto 0));
-            -- FF2
+            
+            -- FF2: Bellek Okuma
             s_read_data16x16 <= s_font_mem16x16(s_fontmem16x16_ptr);
             s_read_data32x32 <= s_font_mem32x32(s_fontmem32x32_ptr);
             s_read_data64x64 <= s_font_mem64x64(s_fontmem64x64_ptr);
-            -- FF3
-            -- We added another register, because bram utilization is very high, it is possible to create lots of wiring latency due do fast bram utilization on fpga.
-        case FONT_SEL_I is
-            when "00" =>
-                PX_DAT_O <= s_read_data16x16(15 - to_integer(PTR_PX_X_I(3 downto 0)));
-            when "01" =>
-                PX_DAT_O <= s_read_data32x32(31 - to_integer(PTR_PX_X_I(4 downto 0)));
-            when "10" => 
-                PX_DAT_O <= s_read_data64x64(63 - to_integer(PTR_PX_X_I(5 downto 0)));
-            when others =>
-                PX_DAT_O <= '0';
+            
+            -- FF3: Çıkış Multiplexer
+            case FONT_SEL_I is
+                when "00" =>
+                    PX_DAT_O <= s_read_data16x16(15 - to_integer(PTR_PX_X_I(3 downto 0)));
+                when "01" =>
+                    PX_DAT_O <= s_read_data32x32(31 - to_integer(PTR_PX_X_I(4 downto 0)));
+                when "10" => 
+                    PX_DAT_O <= s_read_data64x64(63 - to_integer(PTR_PX_X_I(5 downto 0)));
+                when others =>
+                    PX_DAT_O <= '0';
             end case;
         end if;
     end process;
-
 
     P_PIPE_DELAY : process (PX_CLK_I) is 
     begin

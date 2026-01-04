@@ -17,6 +17,9 @@ entity vgachargen is
         RST_I       : in std_logic;
         FONT_SEL_I  : in std_logic_vector(1 downto 0); --00 1x16, 01 32x32, 10 64x64
         RES_SEL_I   : in std_logic_vector(2 downto 0);
+        DMEM_WREN_I : in std_logic;
+        DMEM_DAT_I  : in std_logic_vector(15 downto 0);
+        DMEM_ADR_I  : in unsigned(integer(ceil(log2(real(G_MAX_MEM_DEPTH))))-1 downto 0);
         VGA_R_O     : out std_logic_vector(G_VGA_CLR_WIDTH-1 downto 0);
         VGA_G_O     : out std_logic_vector(G_VGA_CLR_WIDTH-1 downto 0);
         VGA_B_O     : out std_logic_vector(G_VGA_CLR_WIDTH-1 downto 0);
@@ -62,7 +65,7 @@ architecture rtl of vgachargen is
 begin
 
     -- PIPE1 : VGA Signal Generator
-    vgasigen_inst : work.vgasigen
+    vgasigen_inst : entity work.vgasigen
         port map(
             PX_CLK_I     => PX_CLK_I,
             RST_I        => RST_I,
@@ -78,7 +81,7 @@ begin
 
 
     -- PIPE 2 : Data Memory
-    datamem_inst : work.datamem
+    datamem_inst : entity work.datamem
     generic map(
         G_DATAMEM_INITF => G_DATAMEM_INITF,
         G_MAX_MEM_DEPTH => G_MAX_MEM_DEPTH
@@ -87,6 +90,9 @@ begin
         -- In
         PX_CLK_I    => PX_CLK_I,
         CHAR_PTR_I  => sp12_char_ptr,
+        WREN_I      => DMEM_WREN_I,
+        WRDAT_I     => DMEM_DAT_I,
+        WRADR_I     => DMEM_ADR_I,
         -- Out
         ASCII_DAT_O => sp23_ascii_dat,
         FONT_COL_O  => sp23_font_col,
@@ -106,7 +112,7 @@ begin
     );
 
     -- PIPE 3 : Font Memory
-    fontmem_inst : work.fontmem
+    fontmem_inst : entity work.fontmem
     generic map(
         G_FONT16x16_FILE => G_FONT16x16_FILE, 
         G_FONT32x32_FILE => G_FONT32x32_FILE,
@@ -136,7 +142,7 @@ begin
     );
 
     -- PIPE 4 : Colormaker
-    colormaker_inst : work.colormaker
+    colormaker_inst : entity work.colormaker
         port map(
             -- IN
             PX_CLK_I    => PX_CLK_I,
